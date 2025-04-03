@@ -31,14 +31,11 @@ void oscSend(const char* address, const char* type, uint8_t column) {
 void receiveUdp() {
   int packetSize = Udp.parsePacket();
   if (packetSize) {
-    Serial.printf("📥 Received UDP packet of %d bytes from %s:%d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
-
-    char incomingPacket[255];  // adjust buffer size as needed
+    char incomingPacket[255];  // temp buffer
     int len = Udp.read(incomingPacket, sizeof(incomingPacket) - 1);
-    if (len > 0) {
-      incomingPacket[len] = 0;  // Null-terminate the string
-    }
-    Serial.printf("🔹 Data: %s\n", incomingPacket);
+    if (len > 0) { incomingPacket[len] = 0;}
+    String receivedData = String(incomingPacket);
+    Serial.printf("📥 Received UDP: %s\n", receivedData.c_str());
   }
 }
 
