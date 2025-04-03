@@ -7,13 +7,14 @@
 #include "eth_properties.h"
 
 // ETHERNET CONFIGURATION
-IPAddress ip(10, 255, 250, 98);                         //the Arduino's IP
+IPAddress ip(10, 255, 250, 150);                         //the Arduino's IP
 IPAddress subnet(255, 255, 254, 0);                     //subnet mask
 IPAddress gateway(10, 255, 250, 1);                     //gateway IP
 IPAddress outIp(10, 255, 250, 129);                     //destination IP
 const unsigned int inPort = 7001;                       //Arduino's Port
 const unsigned int outPort = 7000;                      //destination Port
-byte mac[] = {0x90, 0xA2, 0xDA, 0x0A, 0x2B, 0X1E};      //Arduino's MAC
+
+byte mac[] = {0x90, 0xA2, 0xDA, 0x0A, 0x2B, 0X1E};      //ESP32's MAC
 
 WiFiUDP Udp;
 
@@ -27,17 +28,31 @@ void oscSend(const char* address, const char* type, uint8_t column) {
   msg.empty();
 }
 
+void receiveUdp() {
+  int packetSize = Udp.parsePacket();
+  if (packetSize) {
+    Serial.printf("📥 Received UDP packet of %d bytes from %s:%d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
+
+    char incomingPacket[255];  // adjust buffer size as needed
+    int len = Udp.read(incomingPacket, sizeof(incomingPacket) - 1);
+    if (len > 0) {
+      incomingPacket[len] = 0;  // Null-terminate the string
+    }
+    Serial.printf("🔹 Data: %s\n", incomingPacket);
+  }
+}
+
 void readSerial(){
   if (Serial.available()>0){
     char incoming = Serial.read();
+    if (incoming == 'z') {Serial.print("ETH IP: "); Serial.println(ETH.localIP());}
+    if (incoming == 'Z') {Serial.print("ETH MAC: "); Serial.println(ETH.macAddress());}
     uint8_t column = int(incoming) - 48; // Convert char to int (ASCII to int)
-    // if (column < 0 || column > 9) return; // Ignore invalid input
     oscSend("/composition/columns/", "i", column);
     if (DEBUG) Serial.println("Connect: " + String(column));
-    Serial.print("ETH IP: ");
-    Serial.println(ETH.localIP());
   }
 }
+
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
     case SYSTEM_EVENT_ETH_START:
@@ -46,13 +61,6 @@ void WiFiEvent(WiFiEvent_t event) {
       break;
     case SYSTEM_EVENT_ETH_CONNECTED:
       Serial.println("ETH Connected");
-      // Set static IP after connection
-      ETH.config(ip, gateway, subnet);
-      if (!ETH.config(ip, gateway, subnet)) {
-        Serial.println("Failed to configure static IP");
-      } else {
-        Serial.println("Static IP configured");
-      }
       break;
     case SYSTEM_EVENT_ETH_GOT_IP:
       Serial.print("ETH IP: ");
@@ -71,10 +79,12 @@ void WiFiEvent(WiFiEvent_t event) {
 void setup(){
   Serial.begin(115200);
   ETH.begin( ETH_ADDR, ETH_POWER_PIN, ETH_MDC_PIN, ETH_MDIO_PIN, ETH_TYPE, ETH_CLK_MODE_0 );
+  ETH.config(ip, gateway, subnet);
   WiFi.onEvent(WiFiEvent);
   Udp.begin(inPort);
 }
 
 void loop(){
   readSerial();
+  receiveUdp();
 }
