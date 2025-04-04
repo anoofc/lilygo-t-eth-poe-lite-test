@@ -1,5 +1,7 @@
 #define DEBUG 1
 
+#define OUT_IP "10.255.250.129" // Destination IP
+
 #include <Arduino.h>
 #include <ETH.h>
 #include <WiFiUdp.h>
@@ -14,9 +16,21 @@ IPAddress outIp(10, 255, 250, 129);                     //destination IP
 const unsigned int inPort = 7001;                       //Arduino's Port
 const unsigned int outPort = 7000;                      //destination Port
 
-byte mac[] = {0x90, 0xA2, 0xDA, 0x0A, 0x2B, 0X1E};      //ESP32's MAC
-
 WiFiUDP Udp;
+
+void sendUDP(const char* message, const char* remoteIP, uint16_t remotePort) {
+  IPAddress ip;
+  if (!ip.fromString(remoteIP)) { Serial.println("❌ Invalid IP address"); return; }
+  if (Udp.beginPacket(ip, remotePort) == 0) { Serial.println("❌ Failed to start UDP packet"); return;}
+  Udp.write(reinterpret_cast<const uint8_t*>(message), strlen(message));
+  if (Udp.endPacket() == 0) { Serial.println("❌ UDP send failed!"); } 
+  else                      { Serial.printf("📤 Sent UDP to %s:%d -> %s\n", remoteIP, remotePort, message);}
+}
+
+void sendUDP_(String message, const char* remoteIP, uint16_t remotePort) {
+  sendUDP(message.c_str(), remoteIP, remotePort);
+}
+
 
 void oscSend(const char* address, const char* type, uint8_t column) {
   char fullAddress[50];
@@ -42,11 +56,14 @@ void receiveUdp() {
 void readSerial(){
   if (Serial.available()>0){
     char incoming = Serial.read();
-    if (incoming == 'z') {Serial.print("ETH IP: "); Serial.println(ETH.localIP());}
-    if (incoming == 'Z') {Serial.print("ETH MAC: "); Serial.println(ETH.macAddress());}
+    if (incoming == 'i') {Serial.print("ETH IP: "); Serial.println(ETH.localIP());}
+    if (incoming == 'm') {Serial.print("ETH MAC: "); Serial.println(ETH.macAddress());}
+    if (incoming == 'r') { sendUDP_("Hello" , OUT_IP, outPort); }
     uint8_t column = int(incoming) - 48; // Convert char to int (ASCII to int)
+    if (column < 0 || column > 9) {return;} // Ignore invalid columns
     oscSend("/composition/columns/", "i", column);
-    if (DEBUG) Serial.println("Connect: " + String(column));
+    if (DEBUG) Serial.printf("✅ Connect Column: %d\n", column);
+    if (DEBUG) Serial.printf("📡 Sending OSC: /composition/columns/%d/connect\n", column);
   }
 }
 
@@ -73,9 +90,10 @@ void WiFiEvent(WiFiEvent_t event) {
       break;
   }
 }
+
 void setup(){
   Serial.begin(115200);
-  ETH.begin( ETH_ADDR, ETH_POWER_PIN, ETH_MDC_PIN, ETH_MDIO_PIN, ETH_TYPE, ETH_CLK_MODE_0 );
+  ETH.begin( ETH_ADDR, ETH_POWER_PIN, ETH_MDC_PIN, ETH_MDIO_PIN, ETH_TYPE, ETH_CLK_MODE_0);
   ETH.config(ip, gateway, subnet);
   WiFi.onEvent(WiFiEvent);
   Udp.begin(inPort);
